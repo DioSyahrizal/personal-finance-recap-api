@@ -1,0 +1,15 @@
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Air and Go build artifacts
+tmp/
+bin/
+*.test
+*.out
+coverage.*
+
+# Logs and local OS metadata
+*.log
+.DS_Store
