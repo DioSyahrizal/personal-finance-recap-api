@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -14,4 +15,27 @@ func writeJSON(
 	w.WriteHeader(status)
 
 	return json.NewEncoder(w).Encode(data)
+}
+
+func (app *application) errorResponse(
+	w http.ResponseWriter,
+	status int,
+	message string,
+) {
+	if err := writeJSON(w, status, map[string]string{"error": message}); err != nil {
+		log.Printf("failed to write error response: %v", err)
+	}
+}
+
+func (app *application) serverErrorResponse(
+	w http.ResponseWriter,
+	err error,
+) {
+	log.Printf("failed to handle request: %v", err)
+
+	app.errorResponse(
+		w,
+		http.StatusInternalServerError,
+		"internal server error",
+	)
 }

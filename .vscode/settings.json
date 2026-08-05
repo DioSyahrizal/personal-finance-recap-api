@@ -1,0 +1,10 @@
+{
+  "yaml.disableSchemaDetection": [],
+  "yaml.schemas": {
+    "file:///Users/diosyahrizal/.vscode/extensions/atlassian.atlascode-3.2.1/resources/schemas/pipelines-schema.json": "bitbucket-pipelines.yml",
+    "file:///Users/diosyahrizal/.vscode/extensions/continue.continue-2.0.0-darwin-arm64/config-yaml-schema.json": [
+      ".continue/**/*.yaml",
+      "file:///Users/diosyahrizal/.continue/config.yaml"
+    ]
+  }
+}

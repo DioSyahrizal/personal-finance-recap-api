@@ -13,6 +13,7 @@ func main() {
 	ctx := context.Background()
 
 	databaseURL := os.Getenv("DATABASE_URL")
+
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is not set")
 	}
@@ -37,5 +38,9 @@ func main() {
 
 	http.HandleFunc("GET /health", healthHandler)
 	http.HandleFunc("GET /api/v1/recaps", app.listRecapsHandler)
+	http.HandleFunc(
+		"GET /api/v1/recaps/{id}",
+		app.getRecapHandler,
+	)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

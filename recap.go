@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrRecapNotFound = errors.New("recap not found")
 
 type Recap struct {
 	ID       int64  `json:"id"`
@@ -16,6 +20,11 @@ type Recap struct {
 
 type recapStore interface {
 	List(ctx context.Context) ([]Recap, error)
+	GetByID(ctx context.Context, id int64) (Recap, error)
+	ListItemsByRecapID(
+		ctx context.Context,
+		recapID int64,
+	) ([]RecapItem, error)
 }
 
 type postgresRecapStore struct {
@@ -47,4 +56,40 @@ func (store *postgresRecapStore) List(
 	}
 
 	return recaps, nil
+}
+
+func (store *postgresRecapStore) GetByID(
+	ctx context.Context,
+	id int64,
+) (Recap, error) {
+	var recap Recap
+
+	err := store.db.QueryRow(ctx, `
+			SELECT
+				id,
+				name,
+				period::text,
+				bank_name,
+				status
+			FROM recaps
+			WHERE id = $1
+			AND deleted_at IS NULL
+		`,
+		id).Scan(
+		&recap.ID,
+		&recap.Name,
+		&recap.Period,
+		&recap.BankName,
+		&recap.Status,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Recap{}, ErrRecapNotFound
+	}
+
+	if err != nil {
+		return Recap{}, err
+	}
+
+	return recap, nil
 }

@@ -1,9 +1,10 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"strconv"
 )
 
 type application struct {
@@ -23,14 +24,51 @@ func (app *application) listRecapsHandler(
 ) {
 	recaps, err := app.store.List(r.Context())
 	if err != nil {
-		http.Error(
+		app.serverErrorResponse(w, err)
+		return
+	}
+
+	if err := writeJSON(w, http.StatusOK, recaps); err != nil {
+		log.Printf("failed to write recaps response: %v", err)
+	}
+}
+
+func (app *application) getRecapHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	id, err := strconv.ParseInt(
+		r.PathValue("id"),
+		10,
+		64,
+	)
+
+	if err != nil || id <= 0 {
+		app.errorResponse(
 			w,
-			"internal server error",
-			http.StatusInternalServerError,
+			http.StatusBadRequest,
+			"invalid recap id",
 		)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(recaps)
+	recap, err := app.store.GetByID(r.Context(), id)
+
+	if errors.Is(err, ErrRecapNotFound) {
+		app.errorResponse(
+			w,
+			http.StatusNotFound,
+			"recap not found",
+		)
+		return
+	}
+
+	if err != nil {
+		app.serverErrorResponse(w, err)
+		return
+	}
+
+	if err := writeJSON(w, http.StatusOK, recap); err != nil {
+		log.Printf("failed to write recap response: %v", err)
+	}
 }
