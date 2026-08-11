@@ -10,10 +10,14 @@ import (
 )
 
 type stubRecapStore struct {
-	recaps       []Recap
-	err          error
-	getByIDCalls int
-	lastID       int64
+	recaps             []Recap
+	err                error
+	getByIDCalls       int
+	lastID             int64
+	items              []RecapItem
+	itemsErr           error
+	listItemsCalls     int
+	lastItemsByRecapID int64
 }
 
 func (store *stubRecapStore) List(
@@ -45,7 +49,10 @@ func (store *stubRecapStore) ListItemsByRecapID(
 	ctx context.Context,
 	recapID int64,
 ) ([]RecapItem, error) {
-	return nil, store.err
+	store.listItemsCalls++
+	store.lastItemsByRecapID = recapID
+
+	return store.items, store.itemsErr
 }
 
 func assertJSONResponse(
@@ -391,6 +398,254 @@ func TestGetRecapHandlerStoreError(t *testing.T) {
 			"expected store to receive ID %d, got %d",
 			1,
 			store.lastID,
+		)
+	}
+}
+
+func TestListRecapItemsHandler(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/recaps/1/items",
+		nil,
+	)
+	request.SetPathValue("id", "1")
+	recorder := httptest.NewRecorder()
+
+	store := &stubRecapStore{
+		recaps: []Recap{
+			{
+				ID:   1,
+				Name: "January Recap",
+			},
+		},
+		items: []RecapItem{
+			{
+				ID:          1,
+				RecapID:     1,
+				Date:        "2022-01-01",
+				Description: "Payment to John Doe",
+				Amount:      1000,
+				Balance:     nil,
+				Category:    nil,
+			},
+		},
+	}
+
+	app := &application{
+		store: store,
+	}
+
+	app.listRecapItemsHandler(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+
+	assertJSONResponse(t, response, http.StatusOK)
+
+	var items []RecapItem
+
+	if err := json.NewDecoder(response.Body).Decode(&items); err != nil {
+		t.Fatalf("expected JSON response, got %v", err)
+	}
+
+	if len(items) != 1 {
+		t.Fatalf("expected 1 recap item, got %d", len(items))
+	}
+
+	if items[0].Description != "Payment to John Doe" {
+		t.Errorf(
+			"expected description %q, got %q",
+			"Payment to John Doe",
+			items[0].Description,
+		)
+	}
+
+	if store.getByIDCalls != 1 {
+		t.Errorf("expected GetByID to be called once, got %d calls", store.getByIDCalls)
+	}
+
+	if store.listItemsCalls != 1 {
+		t.Errorf(
+			"expected ListItemsByRecapID to be called once, got %d calls",
+			store.listItemsCalls,
+		)
+	}
+
+	if store.lastItemsByRecapID != 1 {
+		t.Errorf(
+			"expected ListItemsByRecapID to receive ID %d, got %d",
+			1,
+			store.lastItemsByRecapID,
+		)
+	}
+}
+
+func TestListRecapItemsHandlerEmpty(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/recaps/1/items",
+		nil,
+	)
+	request.SetPathValue("id", "1")
+	recorder := httptest.NewRecorder()
+
+	store := &stubRecapStore{
+		recaps: []Recap{{ID: 1}},
+		items:  []RecapItem{},
+	}
+
+	app := &application{store: store}
+	app.listRecapItemsHandler(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+
+	assertJSONResponse(t, response, http.StatusOK)
+
+	var items []RecapItem
+	if err := json.NewDecoder(response.Body).Decode(&items); err != nil {
+		t.Fatalf("expected JSON response, got %v", err)
+	}
+
+	if items == nil {
+		t.Fatal("expected an empty JSON array, got null")
+	}
+
+	if len(items) != 0 {
+		t.Errorf("expected 0 recap items, got %d", len(items))
+	}
+}
+
+func TestListRecapItemsHandlerInvalidID(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/recaps/not-a-number/items",
+		nil,
+	)
+	request.SetPathValue("id", "not-a-number")
+	recorder := httptest.NewRecorder()
+	store := &stubRecapStore{}
+
+	app := &application{store: store}
+	app.listRecapItemsHandler(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+
+	assertJSONResponse(t, response, http.StatusBadRequest)
+
+	if store.getByIDCalls != 0 {
+		t.Errorf("expected GetByID not to be called, got %d calls", store.getByIDCalls)
+	}
+
+	if store.listItemsCalls != 0 {
+		t.Errorf(
+			"expected ListItemsByRecapID not to be called, got %d calls",
+			store.listItemsCalls,
+		)
+	}
+}
+
+func TestListRecapItemsHandlerRecapNotFound(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/recaps/999/items",
+		nil,
+	)
+	request.SetPathValue("id", "999")
+	recorder := httptest.NewRecorder()
+	store := &stubRecapStore{}
+
+	app := &application{store: store}
+	app.listRecapItemsHandler(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+
+	assertJSONResponse(t, response, http.StatusNotFound)
+
+	var body map[string]string
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("expected JSON response, got %v", err)
+	}
+
+	if body["error"] != "recap not found" {
+		t.Errorf("expected error %q, got %q", "recap not found", body["error"])
+	}
+
+	if store.getByIDCalls != 1 {
+		t.Errorf("expected GetByID to be called once, got %d calls", store.getByIDCalls)
+	}
+
+	if store.listItemsCalls != 0 {
+		t.Errorf(
+			"expected ListItemsByRecapID not to be called, got %d calls",
+			store.listItemsCalls,
+		)
+	}
+}
+
+func TestListRecapItemsHandlerRecapStoreError(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/recaps/1/items",
+		nil,
+	)
+	request.SetPathValue("id", "1")
+	recorder := httptest.NewRecorder()
+	store := &stubRecapStore{
+		err: errors.New("database unavailable"),
+	}
+
+	app := &application{store: store}
+	app.listRecapItemsHandler(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+
+	assertJSONResponse(t, response, http.StatusInternalServerError)
+
+	if store.getByIDCalls != 1 {
+		t.Errorf("expected GetByID to be called once, got %d calls", store.getByIDCalls)
+	}
+
+	if store.listItemsCalls != 0 {
+		t.Errorf(
+			"expected ListItemsByRecapID not to be called, got %d calls",
+			store.listItemsCalls,
+		)
+	}
+}
+
+func TestListRecapItemsHandlerItemsStoreError(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/recaps/1/items",
+		nil,
+	)
+	request.SetPathValue("id", "1")
+	recorder := httptest.NewRecorder()
+	store := &stubRecapStore{
+		recaps:   []Recap{{ID: 1}},
+		itemsErr: errors.New("database unavailable"),
+	}
+
+	app := &application{store: store}
+	app.listRecapItemsHandler(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+
+	assertJSONResponse(t, response, http.StatusInternalServerError)
+
+	if store.getByIDCalls != 1 {
+		t.Errorf("expected GetByID to be called once, got %d calls", store.getByIDCalls)
+	}
+
+	if store.listItemsCalls != 1 {
+		t.Errorf(
+			"expected ListItemsByRecapID to be called once, got %d calls",
+			store.listItemsCalls,
 		)
 	}
 }

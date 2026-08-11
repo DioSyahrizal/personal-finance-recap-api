@@ -42,5 +42,6 @@ func main() {
 		"GET /api/v1/recaps/{id}",
 		app.getRecapHandler,
 	)
+	http.HandleFunc("GET /api/v1/recaps/{id}/items", app.listRecapItemsHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
