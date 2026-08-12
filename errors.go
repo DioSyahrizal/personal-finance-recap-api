@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/diosyahrizal/finance-recap-api/internal/recap"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -54,7 +55,7 @@ func (app *application) handleError(
 			apiErr.message,
 		)
 
-	case errors.Is(err, ErrRecapNotFound):
+	case errors.Is(err, recap.ErrNotFound):
 		app.errorResponse(
 			w,
 			http.StatusNotFound,

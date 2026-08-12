@@ -3,10 +3,12 @@ package main
 import (
 	"net/http"
 	"strconv"
+
+	"github.com/diosyahrizal/finance-recap-api/internal/recap"
 )
 
 type application struct {
-	store recapStore
+	store recap.Store
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) error {

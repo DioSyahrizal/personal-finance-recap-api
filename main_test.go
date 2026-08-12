@@ -7,23 +7,29 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/diosyahrizal/finance-recap-api/internal/recap"
 )
 
 type stubRecapStore struct {
-	recaps             []Recap
+	recaps             []recap.Recap
 	err                error
 	getByIDCalls       int
 	lastID             int64
-	items              []RecapItem
+	items              []recap.Item
 	itemsErr           error
 	listItemsCalls     int
 	lastItemsByRecapID int64
 	panicOnList        bool
+	createdRecap       recap.Recap
+	createErr          error
+	createCalls        int
+	lastCreateInput    recap.CreateInput
 }
 
 func (store *stubRecapStore) List(
 	ctx context.Context,
-) ([]Recap, error) {
+) ([]recap.Recap, error) {
 	if store.panicOnList {
 		panic("unexpected failure")
 	}
@@ -34,17 +40,17 @@ func (store *stubRecapStore) List(
 func (store *stubRecapStore) GetByID(
 	ctx context.Context,
 	id int64,
-) (Recap, error) {
+) (recap.Recap, error) {
 
 	store.getByIDCalls++
 	store.lastID = id
 
 	if store.err != nil {
-		return Recap{}, store.err
+		return recap.Recap{}, store.err
 	}
 
 	if len(store.recaps) == 0 {
-		return Recap{}, ErrRecapNotFound
+		return recap.Recap{}, recap.ErrNotFound
 	}
 
 	return store.recaps[0], nil
@@ -53,11 +59,21 @@ func (store *stubRecapStore) GetByID(
 func (store *stubRecapStore) ListItemsByRecapID(
 	ctx context.Context,
 	recapID int64,
-) ([]RecapItem, error) {
+) ([]recap.Item, error) {
 	store.listItemsCalls++
 	store.lastItemsByRecapID = recapID
 
 	return store.items, store.itemsErr
+}
+
+func (store *stubRecapStore) Create(
+	ctx context.Context,
+	input recap.CreateInput,
+) (recap.Recap, error) {
+	store.createCalls++
+	store.lastCreateInput = input
+
+	return store.createdRecap, store.createErr
 }
 
 func assertJSONResponse(
@@ -114,7 +130,7 @@ func TestListRecapsHandler(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	store := &stubRecapStore{
-		recaps: []Recap{
+		recaps: []recap.Recap{
 			{
 				ID:   1,
 				Name: "January Recap",
@@ -133,7 +149,7 @@ func TestListRecapsHandler(t *testing.T) {
 
 	assertJSONResponse(t, response, http.StatusOK)
 
-	var recaps []Recap
+	var recaps []recap.Recap
 
 	err := json.NewDecoder(response.Body).Decode(&recaps)
 
@@ -201,7 +217,7 @@ func TestGetRecapHandler(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	store := &stubRecapStore{
-		recaps: []Recap{
+		recaps: []recap.Recap{
 			{
 				ID:       1,
 				Name:     "January Recap",
@@ -223,7 +239,7 @@ func TestGetRecapHandler(t *testing.T) {
 
 	assertJSONResponse(t, response, http.StatusOK)
 
-	var recap Recap
+	var recap recap.Recap
 
 	if err := json.NewDecoder(response.Body).Decode(&recap); err != nil {
 		t.Fatalf("expected JSON response, got %v", err)
@@ -418,13 +434,13 @@ func TestListRecapItemsHandler(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	store := &stubRecapStore{
-		recaps: []Recap{
+		recaps: []recap.Recap{
 			{
 				ID:   1,
 				Name: "January Recap",
 			},
 		},
-		items: []RecapItem{
+		items: []recap.Item{
 			{
 				ID:          1,
 				RecapID:     1,
@@ -448,7 +464,7 @@ func TestListRecapItemsHandler(t *testing.T) {
 
 	assertJSONResponse(t, response, http.StatusOK)
 
-	var items []RecapItem
+	var items []recap.Item
 
 	if err := json.NewDecoder(response.Body).Decode(&items); err != nil {
 		t.Fatalf("expected JSON response, got %v", err)
@@ -496,8 +512,8 @@ func TestListRecapItemsHandlerEmpty(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	store := &stubRecapStore{
-		recaps: []Recap{{ID: 1}},
-		items:  []RecapItem{},
+		recaps: []recap.Recap{{ID: 1}},
+		items:  []recap.Item{},
 	}
 
 	app := &application{store: store}
@@ -508,7 +524,7 @@ func TestListRecapItemsHandlerEmpty(t *testing.T) {
 
 	assertJSONResponse(t, response, http.StatusOK)
 
-	var items []RecapItem
+	var items []recap.Item
 	if err := json.NewDecoder(response.Body).Decode(&items); err != nil {
 		t.Fatalf("expected JSON response, got %v", err)
 	}
@@ -632,7 +648,7 @@ func TestListRecapItemsHandlerItemsStoreError(t *testing.T) {
 	request.SetPathValue("id", "1")
 	recorder := httptest.NewRecorder()
 	store := &stubRecapStore{
-		recaps:   []Recap{{ID: 1}},
+		recaps:   []recap.Recap{{ID: 1}},
 		itemsErr: errors.New("database unavailable"),
 	}
 
@@ -658,7 +674,7 @@ func TestListRecapItemsHandlerItemsStoreError(t *testing.T) {
 
 func TestRoutes(t *testing.T) {
 	store := &stubRecapStore{
-		recaps: []Recap{
+		recaps: []recap.Recap{
 			{
 				ID:   1,
 				Name: "January Recap",

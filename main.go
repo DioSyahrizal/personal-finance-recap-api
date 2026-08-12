@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/diosyahrizal/finance-recap-api/internal/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -30,7 +31,7 @@ func main() {
 
 	log.Println("Connected to the database successfully")
 
-	var store = &postgresRecapStore{db: db}
+	var store = postgres.NewRecapStore(db)
 
 	app := &application{
 		store: store,
