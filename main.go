@@ -30,18 +30,11 @@ func main() {
 
 	log.Println("Connected to the database successfully")
 
-	var store recapStore = &postgresRecapStore{db: db}
+	var store = &postgresRecapStore{db: db}
 
 	app := &application{
 		store: store,
 	}
 
-	http.HandleFunc("GET /health", healthHandler)
-	http.HandleFunc("GET /api/v1/recaps", app.listRecapsHandler)
-	http.HandleFunc(
-		"GET /api/v1/recaps/{id}",
-		app.getRecapHandler,
-	)
-	http.HandleFunc("GET /api/v1/recaps/{id}/items", app.listRecapItemsHandler)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", app.routes()))
 }

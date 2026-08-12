@@ -26,16 +26,3 @@ func (app *application) errorResponse(
 		log.Printf("failed to write error response: %v", err)
 	}
 }
-
-func (app *application) serverErrorResponse(
-	w http.ResponseWriter,
-	err error,
-) {
-	log.Printf("failed to handle request: %v", err)
-
-	app.errorResponse(
-		w,
-		http.StatusInternalServerError,
-		"internal server error",
-	)
-}

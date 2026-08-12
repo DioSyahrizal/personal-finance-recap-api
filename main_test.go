@@ -18,11 +18,16 @@ type stubRecapStore struct {
 	itemsErr           error
 	listItemsCalls     int
 	lastItemsByRecapID int64
+	panicOnList        bool
 }
 
 func (store *stubRecapStore) List(
 	ctx context.Context,
 ) ([]Recap, error) {
+	if store.panicOnList {
+		panic("unexpected failure")
+	}
+
 	return store.recaps, store.err
 }
 
@@ -84,7 +89,8 @@ func TestHealthHandler(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
 
-	healthHandler(recorder, request)
+	app := &application{}
+	app.handle(healthHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -120,7 +126,7 @@ func TestListRecapsHandler(t *testing.T) {
 		store: store,
 	}
 
-	app.listRecapsHandler(recorder, request)
+	app.handle(app.listRecapsHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -161,7 +167,7 @@ func TestListRecapsHandlerStoreError(t *testing.T) {
 		store: store,
 	}
 
-	app.listRecapsHandler(recorder, request)
+	app.handle(app.listRecapsHandler)(recorder, request)
 
 	response := recorder.Result()
 
@@ -210,7 +216,7 @@ func TestGetRecapHandler(t *testing.T) {
 		store: store,
 	}
 
-	app.getRecapHandler(recorder, request)
+	app.handle(app.getRecapHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -252,7 +258,7 @@ func TestGetRecapHandlerInvalidID(t *testing.T) {
 		store: store,
 	}
 
-	app.getRecapHandler(recorder, request)
+	app.handle(app.getRecapHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -302,7 +308,7 @@ func TestGetRecapHandlerNotFound(t *testing.T) {
 		store: store,
 	}
 
-	app.getRecapHandler(recorder, request)
+	app.handle(app.getRecapHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -361,7 +367,7 @@ func TestGetRecapHandlerStoreError(t *testing.T) {
 		store: store,
 	}
 
-	app.getRecapHandler(recorder, request)
+	app.handle(app.getRecapHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -435,7 +441,7 @@ func TestListRecapItemsHandler(t *testing.T) {
 		store: store,
 	}
 
-	app.listRecapItemsHandler(recorder, request)
+	app.handle(app.listRecapItemsHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -495,7 +501,7 @@ func TestListRecapItemsHandlerEmpty(t *testing.T) {
 	}
 
 	app := &application{store: store}
-	app.listRecapItemsHandler(recorder, request)
+	app.handle(app.listRecapItemsHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -527,7 +533,7 @@ func TestListRecapItemsHandlerInvalidID(t *testing.T) {
 	store := &stubRecapStore{}
 
 	app := &application{store: store}
-	app.listRecapItemsHandler(recorder, request)
+	app.handle(app.listRecapItemsHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -557,7 +563,7 @@ func TestListRecapItemsHandlerRecapNotFound(t *testing.T) {
 	store := &stubRecapStore{}
 
 	app := &application{store: store}
-	app.listRecapItemsHandler(recorder, request)
+	app.handle(app.listRecapItemsHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -598,7 +604,7 @@ func TestListRecapItemsHandlerRecapStoreError(t *testing.T) {
 	}
 
 	app := &application{store: store}
-	app.listRecapItemsHandler(recorder, request)
+	app.handle(app.listRecapItemsHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -631,7 +637,7 @@ func TestListRecapItemsHandlerItemsStoreError(t *testing.T) {
 	}
 
 	app := &application{store: store}
-	app.listRecapItemsHandler(recorder, request)
+	app.handle(app.listRecapItemsHandler)(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -646,6 +652,76 @@ func TestListRecapItemsHandlerItemsStoreError(t *testing.T) {
 		t.Errorf(
 			"expected ListItemsByRecapID to be called once, got %d calls",
 			store.listItemsCalls,
+		)
+	}
+}
+
+func TestRoutes(t *testing.T) {
+	store := &stubRecapStore{
+		recaps: []Recap{
+			{
+				ID:   1,
+				Name: "January Recap",
+			},
+		},
+	}
+
+	app := &application{store: store}
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/recaps/1",
+		nil,
+	)
+	recorder := httptest.NewRecorder()
+
+	app.routes().ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+
+	assertJSONResponse(t, response, http.StatusOK)
+
+	if store.getByIDCalls != 1 {
+		t.Errorf(
+			"expected GetByID to be called once, got %d calls",
+			store.getByIDCalls,
+		)
+	}
+
+	if store.lastID != 1 {
+		t.Errorf(
+			"expected store to receive ID %d, got %d",
+			1,
+			store.lastID,
+		)
+	}
+}
+
+func TestRecoverer(t *testing.T) {
+	store := &stubRecapStore{
+		panicOnList: true,
+	}
+
+	app := &application{store: store}
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/recaps",
+		nil,
+	)
+	recorder := httptest.NewRecorder()
+
+	app.routes().ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusInternalServerError {
+		t.Errorf(
+			"expected status %d, got %d",
+			http.StatusInternalServerError,
+			response.StatusCode,
 		)
 	}
 }

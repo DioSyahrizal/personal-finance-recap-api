@@ -1,15 +1,19 @@
 package main
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type RecapItem struct {
-	ID          int64   `json:"id"`
-	RecapID     int64   `json:"recap_id"`
-	Date        string  `json:"date"`
-	Description string  `json:"description"`
-	Amount      int64   `json:"amount"`
-	Balance     *int64  `json:"balance"`
-	Category    *string `json:"category"`
+	ID          int64     `json:"id"`
+	RecapID     int64     `json:"recap_id"`
+	Date        string    `json:"date"`
+	Description string    `json:"description"`
+	Amount      float64   `json:"amount"`
+	Balance     *float64  `json:"balance"`
+	CreatedAt   time.Time `json:"created_at"`
+	Category    *string   `json:"category"`
 }
 
 func (store *postgresRecapStore) ListItemsByRecapID(
@@ -25,6 +29,7 @@ func (store *postgresRecapStore) ListItemsByRecapID(
 				description,
 				amount,
 				balance,
+				created_at,
 				category
 			FROM recap_items
 			WHERE recap_id = $1
@@ -47,6 +52,7 @@ func (store *postgresRecapStore) ListItemsByRecapID(
 			&item.Description,
 			&item.Amount,
 			&item.Balance,
+			&item.CreatedAt,
 			&item.Category,
 		)
 		if err != nil {
