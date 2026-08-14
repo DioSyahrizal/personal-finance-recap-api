@@ -201,3 +201,88 @@ func TestRecapStoreListItemsByRecapID(t *testing.T) {
 		t.Errorf("unmet database expectations: %v", err)
 	}
 }
+
+func TestRecapStoreCreate(t *testing.T) {
+	store, db := newMockStore(t)
+	createdAt := time.Date(2025, time.December, 30, 3, 25, 45, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Hour)
+
+	input := recap.CreateInput{
+		Name:     "Monthly Expenses September 2025",
+		BankName: "Bank Central Asia",
+		Period:   "september",
+	}
+
+	rows := pgxmock.NewRows([]string{
+		"id",
+		"name",
+		"status",
+		"bank_name",
+		"period",
+		"created_at",
+		"updated_at",
+		"deleted_at",
+	}).AddRow(
+		int64(2),
+		input.Name,
+		"pending",
+		input.BankName,
+		input.Period,
+		createdAt,
+		updatedAt,
+		nil,
+	)
+
+	db.ExpectQuery(`INSERT INTO recaps .* RETURNING`).
+		WithArgs(
+			input.Name,
+			input.BankName,
+			input.Period,
+		).
+		WillReturnRows(rows)
+
+	result, err := store.Create(context.Background(), input)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if result.ID != 2 {
+		t.Errorf("expected recap ID %d, got %d", 2, result.ID)
+	}
+
+	if result.Name != input.Name {
+		t.Errorf("expected name %q, got %q", input.Name, result.Name)
+	}
+
+	if result.Status != "pending" {
+		t.Errorf("expected status %q, got %q", "pending", result.Status)
+	}
+
+	if result.BankName != input.BankName {
+		t.Errorf(
+			"expected bank name %q, got %q",
+			input.BankName,
+			result.BankName,
+		)
+	}
+
+	if result.Period != input.Period {
+		t.Errorf("expected period %q, got %q", input.Period, result.Period)
+	}
+
+	if !result.CreatedAt.Equal(createdAt) {
+		t.Errorf("expected created_at %v, got %v", createdAt, result.CreatedAt)
+	}
+
+	if !result.UpdatedAt.Equal(updatedAt) {
+		t.Errorf("expected updated_at %v, got %v", updatedAt, result.UpdatedAt)
+	}
+
+	if result.DeletedAt != nil {
+		t.Errorf("expected deleted_at to be nil, got %v", result.DeletedAt)
+	}
+
+	if err := db.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet database expectations: %v", err)
+	}
+}

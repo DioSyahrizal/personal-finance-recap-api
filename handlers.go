@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/diosyahrizal/finance-recap-api/internal/recap"
 )
@@ -80,4 +81,57 @@ func (app *application) listRecapItemsHandler(
 	}
 
 	return writeJSON(w, http.StatusOK, recapItems)
+}
+
+func (app *application) createRecapHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) error {
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		return newAPIError(
+			http.StatusBadRequest,
+			"invalid multipart form",
+		)
+	}
+
+	defer r.MultipartForm.RemoveAll()
+
+	name := strings.TrimSpace(r.FormValue("name"))
+	bankName := strings.TrimSpace(r.FormValue("bank"))
+	period := strings.ToLower(strings.TrimSpace(r.FormValue("period")))
+
+	if name == "" {
+		return newAPIError(
+			http.StatusBadRequest,
+			"name is required",
+		)
+	}
+
+	if bankName == "" {
+		return newAPIError(
+			http.StatusBadRequest,
+			"bank is required",
+		)
+	}
+
+	if period == "" {
+		return newAPIError(
+			http.StatusBadRequest,
+			"period is required",
+		)
+	}
+
+	input := recap.CreateInput{
+		Name:     name,
+		BankName: bankName,
+		Period:   period,
+	}
+
+	createdRecap, err := app.store.Create(r.Context(), input)
+	if err != nil {
+		return err
+	}
+
+	return writeJSON(w, http.StatusCreated, createdRecap)
 }

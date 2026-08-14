@@ -6,6 +6,7 @@ import (
 
 	"github.com/diosyahrizal/finance-recap-api/internal/recap"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type DB interface {
@@ -19,6 +20,11 @@ type DB interface {
 		sql string,
 		args ...any,
 	) pgx.Row
+	Exec(
+		ctx context.Context,
+		sql string,
+		args ...any,
+	) (pgconn.CommandTag, error)
 }
 
 type RecapStore struct {

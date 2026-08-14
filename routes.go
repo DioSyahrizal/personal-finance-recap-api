@@ -20,6 +20,8 @@ func (app *application) routes() http.Handler {
 
 	router.Route("/api/v1", func(router chi.Router) {
 		router.Get("/recaps", app.handle(app.listRecapsHandler))
+		router.Post("/recaps", app.handle(app.createRecapHandler))
+
 		router.Get("/recaps/{id}", app.handle(app.getRecapHandler))
 		router.Get(
 			"/recaps/{id}/items",
