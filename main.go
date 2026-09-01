@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/diosyahrizal/finance-recap-api/internal/importer"
 	"github.com/diosyahrizal/finance-recap-api/internal/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -31,10 +32,14 @@ func main() {
 
 	log.Println("Connected to the database successfully")
 
-	var store = postgres.NewRecapStore(db)
+	recapStore := postgres.NewRecapStore(db)
+	importStore := postgres.NewImportJobStore(db)
+	fileStore := importer.NewLocalFileStore("./uploads")
 
 	app := &application{
-		store: store,
+		store:         recapStore,
+		importCreator: importStore,
+		fileStore:     fileStore,
 	}
 
 	log.Fatal(http.ListenAndServe(":8080", app.routes()))

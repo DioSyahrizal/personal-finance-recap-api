@@ -267,3 +267,54 @@ func TestWorkerProcessNextEmptyQueue(t *testing.T) {
 	}
 
 }
+
+func TestWorkerRunStopsWhenContextCanceled(t *testing.T) {
+	claimSignal := make(chan struct{}, 1)
+
+	store := &stubImportJobStore{
+		job:         nil,
+		claimSignal: claimSignal,
+	}
+
+	processor := &stubProcessor{}
+
+	worker := NewWorker(
+		store,
+		processor,
+		5*time.Millisecond,
+	)
+
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
+	defer cancel()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		worker.Run(ctx)
+	}()
+
+	select {
+	case <-claimSignal:
+		// The worker ticked and checked the queue.
+
+	case <-time.After(time.Second):
+		t.Fatal("worker did not check the queue")
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+		// The worker observed cancellation and exited.
+
+	case <-time.After(time.Second):
+		t.Fatal("worker did not stop after context cancellation")
+	}
+
+	if store.claimCalls == 0 {
+		t.Error("expected worker to claim at least once")
+	}
+}

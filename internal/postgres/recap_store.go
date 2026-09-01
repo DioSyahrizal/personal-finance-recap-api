@@ -10,6 +10,7 @@ import (
 )
 
 type DB interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
 	Query(
 		ctx context.Context,
 		sql string,

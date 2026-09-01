@@ -5,11 +5,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/diosyahrizal/finance-recap-api/internal/importer"
 	"github.com/diosyahrizal/finance-recap-api/internal/recap"
 )
 
 type application struct {
-	store recap.Store
+	store         recap.Store
+	importCreator recap.ImportCreator
+	fileStore     importer.FileStore
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) error {

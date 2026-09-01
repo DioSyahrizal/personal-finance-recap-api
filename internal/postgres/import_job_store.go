@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/diosyahrizal/finance-recap-api/internal/recap"
 	"github.com/jackc/pgx/v5"
@@ -13,6 +14,7 @@ type ImportJobStore struct {
 }
 
 var _ recap.ImportJobStore = (*ImportJobStore)(nil)
+var _ recap.ImportCreator = (*ImportJobStore)(nil)
 
 func NewImportJobStore(db DB) *ImportJobStore {
 	return &ImportJobStore{
@@ -159,4 +161,86 @@ func (store *ImportJobStore) MarkFailed(
 	}
 
 	return nil
+}
+
+func (store *ImportJobStore) CreateImport(
+	ctx context.Context,
+	input recap.CreateInput,
+	filePath string,
+) (recap.Recap, error) {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return recap.Recap{}, fmt.Errorf(
+			"begin create import transaction: %w",
+			err,
+		)
+	}
+	defer tx.Rollback(ctx)
+
+	var created recap.Recap
+
+	err = tx.QueryRow(ctx, `
+		INSERT INTO recaps (
+			name,
+			bank_name,
+			period
+		)
+		VALUES ($1, $2, $3)
+		RETURNING
+			id,
+			name,
+			status,
+			bank_name,
+			period,
+			created_at,
+			updated_at,
+			deleted_at
+	`,
+		input.Name,
+		input.BankName,
+		input.Period,
+	).Scan(
+		&created.ID,
+		&created.Name,
+		&created.Status,
+		&created.BankName,
+		&created.Period,
+		&created.CreatedAt,
+		&created.UpdatedAt,
+		&created.DeletedAt,
+	)
+	if err != nil {
+		return recap.Recap{}, fmt.Errorf(
+			"insert recap: %w",
+			err,
+		)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO recap_import_jobs (
+			recap_id,
+			file_path,
+			status
+		)
+		VALUES ($1, $2, $3)
+	`,
+		created.ID,
+		filePath,
+		string(recap.ImportJobStatusQueued),
+	)
+	if err != nil {
+		return recap.Recap{}, fmt.Errorf(
+			"insert import job: %w",
+			err,
+		)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return recap.Recap{}, fmt.Errorf(
+			"commit create import transaction: %w",
+			err,
+		)
+	}
+
+	return created, nil
 }
