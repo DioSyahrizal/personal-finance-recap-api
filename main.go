@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/diosyahrizal/finance-recap-api/internal/importer"
 	"github.com/diosyahrizal/finance-recap-api/internal/postgres"
@@ -18,6 +19,10 @@ func main() {
 
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is not set")
+	}
+
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		log.Fatal("OPENAI_API_KEY is not set")
 	}
 
 	db, err := pgxpool.New(ctx, databaseURL)
@@ -35,6 +40,28 @@ func main() {
 	recapStore := postgres.NewRecapStore(db)
 	importStore := postgres.NewImportJobStore(db)
 	fileStore := importer.NewLocalFileStore("./uploads")
+
+	itemStore := postgres.NewItemStore(db)
+	openAIModel := os.Getenv("OPENAI_MODEL")
+	if openAIModel == "" {
+		openAIModel = "gpt-5.2"
+	}
+
+	parser := importer.NewOpenAIParser(openAIModel)
+
+	processor := importer.NewJobProcessor(
+		parser,
+		itemStore,
+		fileStore,
+	)
+
+	worker := importer.NewWorker(
+		importStore,
+		processor,
+		5*time.Second,
+	)
+
+	go worker.Run(ctx)
 
 	app := &application{
 		store:         recapStore,

@@ -6,6 +6,10 @@
 # Air and Go build artifacts
 tmp/
 bin/
+uploads/
+data.sql
+schema.sql
+supabase-export.json
 *.test
 *.out
 coverage.*

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -90,14 +93,20 @@ func (app *application) createRecapHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) error {
-	err := r.ParseMultipartForm(10 << 20)
-	if err != nil {
+	const maxUploadBytes int64 = 10 << 20 // 10 MB
+
+	r.Body = http.MaxBytesReader(
+		w,
+		r.Body,
+		maxUploadBytes,
+	)
+
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
 		return newAPIError(
 			http.StatusBadRequest,
 			"invalid multipart form",
 		)
 	}
-
 	defer r.MultipartForm.RemoveAll()
 
 	name := strings.TrimSpace(r.FormValue("name"))
@@ -125,16 +134,64 @@ func (app *application) createRecapHandler(
 		)
 	}
 
+	file, fileHeader, err := r.FormFile("file")
+	if err != nil {
+		return newAPIError(
+			http.StatusBadRequest,
+			"PDF file is required",
+		)
+	}
+	defer file.Close()
+
+	if !strings.EqualFold(
+		filepath.Ext(fileHeader.Filename),
+		".pdf",
+	) {
+		return newAPIError(
+			http.StatusBadRequest,
+			"file must be a PDF",
+		)
+	}
+
+	filePath, err := app.fileStore.Save(
+		r.Context(),
+		file,
+	)
+	if err != nil {
+		return err
+	}
+
 	input := recap.CreateInput{
 		Name:     name,
 		BankName: bankName,
 		Period:   period,
 	}
 
-	createdRecap, err := app.store.Create(r.Context(), input)
+	createdRecap, err := app.importCreator.CreateImport(
+		r.Context(),
+		input,
+		filePath,
+	)
 	if err != nil {
+		cleanupContext := context.WithoutCancel(r.Context())
+
+		if deleteErr := app.fileStore.Delete(
+			cleanupContext,
+			filePath,
+		); deleteErr != nil {
+			log.Printf(
+				"failed to clean up uploaded file %q: %v",
+				filePath,
+				deleteErr,
+			)
+		}
+
 		return err
 	}
 
-	return writeJSON(w, http.StatusCreated, createdRecap)
+	return writeJSON(
+		w,
+		http.StatusAccepted,
+		createdRecap,
+	)
 }

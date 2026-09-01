@@ -425,6 +425,8 @@ func TestGetRecapHandlerStoreError(t *testing.T) {
 }
 
 func TestListRecapItemsHandler(t *testing.T) {
+	amount := 1000.0
+
 	request := httptest.NewRequest(
 		http.MethodGet,
 		"/api/v1/recaps/1/items",
@@ -446,7 +448,7 @@ func TestListRecapItemsHandler(t *testing.T) {
 				RecapID:     1,
 				Date:        "2022-01-01",
 				Description: "Payment to John Doe",
-				Amount:      1000,
+				Amount:      &amount,
 				Balance:     nil,
 				Category:    nil,
 			},

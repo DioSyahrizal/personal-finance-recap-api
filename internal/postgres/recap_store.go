@@ -7,6 +7,7 @@ import (
 	"github.com/diosyahrizal/finance-recap-api/internal/recap"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type DB interface {
@@ -161,6 +162,7 @@ func (store *RecapStore) ListItemsByRecapID(
 
 	for rows.Next() {
 		var item recap.Item
+		var amount pgtype.Float8
 		var balance *float64
 		var category *string
 
@@ -169,7 +171,7 @@ func (store *RecapStore) ListItemsByRecapID(
 			&item.RecapID,
 			&item.Date,
 			&item.Description,
-			&item.Amount,
+			&amount,
 			&balance,
 			&item.CreatedAt,
 			&category,
@@ -178,6 +180,10 @@ func (store *RecapStore) ListItemsByRecapID(
 			return nil, err
 		}
 
+		if amount.Valid {
+			value := amount.Float64
+			item.Amount = &value
+		}
 		item.Balance = balance
 		item.Category = category
 		items = append(items, item)

@@ -22,6 +22,8 @@ type Worker struct {
 	interval  time.Duration
 }
 
+const processTimeout = 2 * time.Minute
+
 func NewWorker(
 	store recap.ImportJobStore,
 	processor Processor,
@@ -46,10 +48,19 @@ func (worker *Worker) processNext(
 		return nil
 	}
 
-	err = worker.processor.Process(ctx, *job)
+	log.Printf(
+		"import worker: processing job_id=%d recap_id=%d",
+		job.ID,
+		job.RecapID,
+	)
+
+	processCtx, cancel := context.WithTimeout(ctx, processTimeout)
+	err = worker.processor.Process(processCtx, *job)
+	cancel()
 	if err != nil {
+		markCtx := context.WithoutCancel(ctx)
 		markErr := worker.store.MarkFailed(
-			ctx,
+			markCtx,
 			job.ID,
 			err.Error(),
 		)
@@ -76,6 +87,12 @@ func (worker *Worker) processNext(
 			err,
 		)
 	}
+
+	log.Printf(
+		"import worker: completed job_id=%d recap_id=%d",
+		job.ID,
+		job.RecapID,
+	)
 
 	return nil
 }

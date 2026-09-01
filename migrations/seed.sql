@@ -47,7 +47,7 @@ SELECT
     target_recap.id,
     '2025-09-01',
     '"SALDO AWAL"',
-    0.00,
+    NULL,
     175654122.59,
     'Uncategorized',
     '2025-12-30T03:48:27.984584+00:00'::TIMESTAMPTZ,

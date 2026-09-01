@@ -1,0 +1,2 @@
+ALTER TABLE recap_items
+    ALTER COLUMN amount DROP NOT NULL;
