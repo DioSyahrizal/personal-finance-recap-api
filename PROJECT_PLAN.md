@@ -1,6 +1,6 @@
 # Finance Recap API — Project Plan
 
-Updated: 2026-09-01
+Updated: 2026-09-03
 
 This project replaces Supabase finance-data operations with a Go/PostgreSQL
 backend while keeping the frontend and authentication migration incremental.
@@ -61,16 +61,20 @@ backend while keeping the frontend and authentication migration incremental.
 - [x] Send uploads to the Go API.
 - [x] Show `Pending`, `Processing`, `Completed`, and `Failed` statuses.
 - [x] Remove upload polling from the frontend.
+- [x] Replace frontend analytics fan-out requests with `GET /api/v1/analytics`.
+- [x] Add analytics date-range and bank filters to the frontend.
 - [x] Keep Supabase authentication and settings temporarily.
-
-## Next
 
 ### Analytics
 
-- [ ] Design the `GET /api/v1/analytics` response.
-- [ ] Aggregate monthly category totals in Go/PostgreSQL.
-- [ ] Add the analytics route and handler.
-- [ ] Update the frontend analytics page to use the new endpoint.
+- [x] Define the `GET /api/v1/analytics` response contract.
+- [x] Aggregate monthly category totals in Go/PostgreSQL.
+- [x] Add the analytics route and handler.
+- [x] Filter analytics by transaction month and bank.
+- [x] Exclude incomplete recaps and opening-balance rows from analytics.
+- [x] Add analytics store unit tests.
+
+## Next
 
 ### Authentication and authorization
 
@@ -91,7 +95,7 @@ backend while keeping the frontend and authentication migration incremental.
 - [ ] Add unit tests for category normalization.
 - [ ] Add migration parser tests using a small fixture dump.
 - [ ] Add worker retry and timeout tests.
-- [ ] Add analytics aggregation tests.
+- [x] Add analytics aggregation tests.
 - [ ] Add an end-to-end upload test against local PostgreSQL.
 - [ ] Add graceful shutdown for the HTTP server and worker.
 - [ ] Add structured production logging and basic metrics.
@@ -114,5 +118,8 @@ backend while keeping the frontend and authentication migration incremental.
 
 - `data.sql` and `schema.sql` are local migration artifacts and must not be committed.
 - The current Go API uses the server-side `OPENAI_MODEL` setting.
+- `GET /api/v1/analytics` aggregates existing `recaps` and `recap_items` data without adding table fields.
+- Analytics uses `recap_items.transaction_date` for month grouping and supports inclusive `from`/`to` month filters plus an optional bank filter.
+- Analytics currently treats positive amounts as income and negative amounts as expenses; rows with `NULL` amounts are excluded.
 - New PDF imports are categorized during extraction; a separate legacy re-categorization job can be added later.
 - Supabase remains temporarily responsible for authentication and settings only.

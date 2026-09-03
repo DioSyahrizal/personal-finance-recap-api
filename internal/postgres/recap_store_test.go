@@ -286,3 +286,138 @@ func TestRecapStoreCreate(t *testing.T) {
 		t.Errorf("unmet database expectations: %v", err)
 	}
 }
+
+func TestRecapStoreGetAnalytics(t *testing.T) {
+	store, db := newMockStore(t)
+	september := time.Date(2025, time.September, 1, 0, 0, 0, 0, time.UTC)
+	october := time.Date(2025, time.October, 1, 0, 0, 0, 0, time.UTC)
+
+	rows := pgxmock.NewRows([]string{
+		"month",
+		"period",
+		"category",
+		"income",
+		"expenses",
+		"transaction_count",
+		"uncategorized_expenses",
+	}).AddRow(
+		september,
+		"2025-09",
+		"Bills",
+		0.0,
+		500000.0,
+		int64(3),
+		0.0,
+	).AddRow(
+		september,
+		"2025-09",
+		"Food",
+		0.0,
+		150000.0,
+		int64(2),
+		0.0,
+	).AddRow(
+		september,
+		"2025-09",
+		"Income",
+		1000000.0,
+		0.0,
+		int64(1),
+		0.0,
+	).AddRow(
+		september,
+		"2025-09",
+		"Uncategorized",
+		0.0,
+		100000.0,
+		int64(1),
+		100000.0,
+	).AddRow(
+		october,
+		"2025-10",
+		"Food",
+		0.0,
+		200000.0,
+		int64(2),
+		0.0,
+	)
+
+	db.ExpectQuery(`(?s)SELECT.*DATE_TRUNC\('month'`).
+		WithArgs("2025-09", "2025-10", "Bank Central Asia").
+		WillReturnRows(rows)
+
+	result, err := store.GetAnalytics(context.Background(), recap.AnalyticsFilter{
+		From: "2025-09",
+		To:   "2025-10",
+		Bank: "Bank Central Asia",
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if result.Summary.TotalIncome != 1000000.0 {
+		t.Errorf("expected total income %.2f, got %.2f", 1000000.0, result.Summary.TotalIncome)
+	}
+
+	if result.Summary.TotalExpenses != 950000.0 {
+		t.Errorf("expected total expenses %.2f, got %.2f", 950000.0, result.Summary.TotalExpenses)
+	}
+
+	if result.Summary.NetChange != 50000.0 {
+		t.Errorf("expected net change %.2f, got %.2f", 50000.0, result.Summary.NetChange)
+	}
+
+	if result.Summary.TransactionCount != 9 {
+		t.Errorf("expected transaction count %d, got %d", 9, result.Summary.TransactionCount)
+	}
+
+	if result.Summary.UncategorizedTotal != 100000.0 {
+		t.Errorf(
+			"expected uncategorized total %.2f, got %.2f",
+			100000.0,
+			result.Summary.UncategorizedTotal,
+		)
+	}
+
+	if len(result.Series) != 2 {
+		t.Fatalf("expected 2 periods, got %d", len(result.Series))
+	}
+
+	septemberSeries := result.Series[0]
+	if septemberSeries.Period != "2025-09" {
+		t.Errorf("expected first period %q, got %q", "2025-09", septemberSeries.Period)
+	}
+	if septemberSeries.Income != 1000000.0 {
+		t.Errorf("expected September income %.2f, got %.2f", 1000000.0, septemberSeries.Income)
+	}
+	if septemberSeries.Expenses != 750000.0 {
+		t.Errorf("expected September expenses %.2f, got %.2f", 750000.0, septemberSeries.Expenses)
+	}
+	if septemberSeries.NetChange != 250000.0 {
+		t.Errorf("expected September net change %.2f, got %.2f", 250000.0, septemberSeries.NetChange)
+	}
+	if septemberSeries.Categories["Bills"] != 500000.0 {
+		t.Errorf("expected September Bills total %.2f, got %.2f", 500000.0, septemberSeries.Categories["Bills"])
+	}
+	if septemberSeries.Categories["Income"] != 0 {
+		t.Errorf("expected Income to be excluded from categories, got %.2f", septemberSeries.Categories["Income"])
+	}
+
+	if len(result.CategoryTotals) != 3 {
+		t.Fatalf("expected 3 category totals, got %d", len(result.CategoryTotals))
+	}
+
+	if result.CategoryTotals[0].Category != "Bills" {
+		t.Errorf("expected first category %q, got %q", "Bills", result.CategoryTotals[0].Category)
+	}
+	if result.CategoryTotals[0].Total != 500000.0 {
+		t.Errorf("expected Bills total %.2f, got %.2f", 500000.0, result.CategoryTotals[0].Total)
+	}
+	if result.CategoryTotals[0].Percentage <= 52.63 || result.CategoryTotals[0].Percentage >= 52.64 {
+		t.Errorf("expected Bills percentage around %.2f, got %.2f", 52.63, result.CategoryTotals[0].Percentage)
+	}
+
+	if err := db.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet database expectations: %v", err)
+	}
+}

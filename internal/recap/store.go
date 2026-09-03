@@ -13,4 +13,8 @@ type Store interface {
 		ctx context.Context,
 		input CreateInput,
 	) (Recap, error)
+	GetAnalytics(
+		ctx context.Context,
+		filter AnalyticsFilter,
+	) (Analytics, error)
 }

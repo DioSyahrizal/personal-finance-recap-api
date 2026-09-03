@@ -27,6 +27,8 @@ func (app *application) routes() http.Handler {
 			"/recaps/{id}/items",
 			app.handle(app.listRecapItemsHandler),
 		)
+
+		router.Get("/analytics", app.handle(app.getAnalyticsHandler))
 	})
 
 	return router

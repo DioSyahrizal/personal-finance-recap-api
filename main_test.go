@@ -12,19 +12,33 @@ import (
 )
 
 type stubRecapStore struct {
-	recaps             []recap.Recap
-	err                error
-	getByIDCalls       int
-	lastID             int64
-	items              []recap.Item
-	itemsErr           error
-	listItemsCalls     int
-	lastItemsByRecapID int64
-	panicOnList        bool
-	createdRecap       recap.Recap
-	createErr          error
-	createCalls        int
-	lastCreateInput    recap.CreateInput
+	recaps              []recap.Recap
+	err                 error
+	getByIDCalls        int
+	lastID              int64
+	items               []recap.Item
+	itemsErr            error
+	listItemsCalls      int
+	lastItemsByRecapID  int64
+	panicOnList         bool
+	createdRecap        recap.Recap
+	createErr           error
+	createCalls         int
+	lastCreateInput     recap.CreateInput
+	analytics           recap.Analytics
+	analyticsErr        error
+	getAnalyticsCalls   int
+	lastAnalyticsFilter recap.AnalyticsFilter
+}
+
+func (store *stubRecapStore) GetAnalytics(
+	ctx context.Context,
+	filter recap.AnalyticsFilter,
+) (recap.Analytics, error) {
+	store.getAnalyticsCalls++
+	store.lastAnalyticsFilter = filter
+
+	return store.analytics, store.analyticsErr
 }
 
 func (store *stubRecapStore) List(

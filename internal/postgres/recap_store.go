@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"errors"
+	"sort"
+	"time"
 
 	"github.com/diosyahrizal/finance-recap-api/internal/recap"
 	"github.com/jackc/pgx/v5"
@@ -235,4 +237,179 @@ func (store *RecapStore) Create(ctx context.Context, input recap.CreateInput) (r
 	}
 
 	return result, nil
+}
+
+func (store *RecapStore) GetAnalytics(ctx context.Context, filter recap.AnalyticsFilter) (recap.Analytics, error) {
+
+	const query = `
+	SELECT
+    DATE_TRUNC('month', i.transaction_date)::date AS month,
+    TO_CHAR(
+        DATE_TRUNC('month', i.transaction_date),
+        'YYYY-MM'
+    ) AS period,
+
+    COALESCE(
+        NULLIF(BTRIM(i.category), ''),
+        'Uncategorized'
+    ) AS category,
+
+    COALESCE(
+        SUM(i.amount) FILTER (WHERE i.amount > 0),
+        0
+    )::double precision AS income,
+
+    COALESCE(
+        SUM(ABS(i.amount)) FILTER (WHERE i.amount < 0),
+        0
+    )::double precision AS expenses,
+
+    COUNT(*)::bigint AS transaction_count,
+
+    COALESCE(
+        SUM(ABS(i.amount)) FILTER (
+            WHERE i.amount < 0
+              AND COALESCE(NULLIF(BTRIM(i.category), ''), 'Uncategorized')
+                  = 'Uncategorized'
+        ),
+        0
+    )::double precision AS uncategorized_expenses
+
+	FROM recaps r
+	JOIN recap_items i
+		ON i.recap_id = r.id
+
+	WHERE r.deleted_at IS NULL
+	AND r.status = 'completed'
+	AND i.amount IS NOT NULL
+
+	-- from is inclusive: YYYY-MM
+	AND (
+		$1 = ''
+		OR i.transaction_date >= TO_DATE($1, 'YYYY-MM')
+	)
+
+	-- to is inclusive: YYYY-MM
+	AND (
+		$2 = ''
+		OR i.transaction_date <
+			(TO_DATE($2, 'YYYY-MM') + INTERVAL '1 month')::date
+	)
+
+	-- optional bank filter
+	AND (
+		$3 = ''
+		OR r.bank_name = $3
+	)
+
+	GROUP BY
+		DATE_TRUNC('month', i.transaction_date),
+		COALESCE(
+			NULLIF(BTRIM(i.category), ''),
+			'Uncategorized'
+		)
+
+	ORDER BY
+		month ASC,
+		category ASC;`
+
+	rows, err := store.db.Query(ctx,
+		query, filter.From, filter.To, filter.Bank)
+	if err != nil {
+		return recap.Analytics{}, err
+	}
+	defer rows.Close()
+
+	analytics := recap.Analytics{
+		Series:         make([]recap.AnalyticsPeriod, 0),
+		CategoryTotals: make([]recap.AnalyticsCategoryTotal, 0),
+	}
+	seriesIndexes := make(map[string]int)
+	categoryTotals := make(map[string]float64)
+
+	for rows.Next() {
+		var (
+			month              time.Time
+			period             string
+			category           string
+			income             float64
+			expenses           float64
+			transactionCount   int64
+			uncategorizedTotal float64
+		)
+
+		if err := rows.Scan(
+			&month,
+			&period,
+			&category,
+			&income,
+			&expenses,
+			&transactionCount,
+			&uncategorizedTotal,
+		); err != nil {
+			return recap.Analytics{}, err
+		}
+
+		seriesIndex, ok := seriesIndexes[period]
+		if !ok {
+			seriesIndex = len(analytics.Series)
+			seriesIndexes[period] = seriesIndex
+			analytics.Series = append(analytics.Series, recap.AnalyticsPeriod{
+				Period:     period,
+				Categories: make(map[string]float64),
+			})
+		}
+
+		series := &analytics.Series[seriesIndex]
+		series.Income += income
+		series.Expenses += expenses
+		if category != string(recap.CategoryIncome) && expenses > 0 {
+			series.Categories[category] += expenses
+		}
+
+		analytics.Summary.TotalIncome += income
+		analytics.Summary.TotalExpenses += expenses
+		analytics.Summary.TransactionCount += int(transactionCount)
+		analytics.Summary.UncategorizedTotal += uncategorizedTotal
+
+		if category != string(recap.CategoryIncome) && expenses > 0 {
+			categoryTotals[category] += expenses
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return recap.Analytics{}, err
+	}
+
+	for index := range analytics.Series {
+		analytics.Series[index].NetChange =
+			analytics.Series[index].Income - analytics.Series[index].Expenses
+	}
+	analytics.Summary.NetChange =
+		analytics.Summary.TotalIncome - analytics.Summary.TotalExpenses
+
+	categoryNames := make([]string, 0, len(categoryTotals))
+	for category := range categoryTotals {
+		categoryNames = append(categoryNames, category)
+	}
+	sort.Strings(categoryNames)
+
+	for _, category := range categoryNames {
+		total := categoryTotals[category]
+		percentage := 0.0
+		if analytics.Summary.TotalExpenses > 0 {
+			percentage = total / analytics.Summary.TotalExpenses * 100
+		}
+
+		analytics.CategoryTotals = append(
+			analytics.CategoryTotals,
+			recap.AnalyticsCategoryTotal{
+				Category:   category,
+				Total:      total,
+				Percentage: percentage,
+			},
+		)
+	}
+
+	return analytics, nil
 }
